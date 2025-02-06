@@ -1,0 +1,12 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "dnspython>=2.7.0",
+    "email-validator>=2.2.0",
+    "py3-validate-email>=1.0.5.post2",
+    "streamlit>=1.42.0",
+    "validate-email>=1.3",
+]
