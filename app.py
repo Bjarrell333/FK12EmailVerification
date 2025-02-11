@@ -4,6 +4,7 @@ import streamlit.components.v1 as components
 import os
 
 def load_css():
+    """Load custom CSS for styling"""
     with open("style.css") as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
@@ -49,26 +50,32 @@ def main():
     # Validation button
     if st.button("Validate Email"):
         if email:
-            is_valid, message = validate_email_address(email)
+            results = validate_email_address(email)
 
-            if is_valid:
-                st.markdown(
-                    f"""
-                    <div class="validation-result success">
-                        ✅ {message}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+            st.subheader("Validation Status:")
+
+            # Display format check result
+            if results["format"]["status"] == "Success":
+                st.success(f"**Format Check:** {results['format']['message']}")
             else:
-                st.markdown(
-                    f"""
-                    <div class="validation-result error">
-                        ❌ {message}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.error(f"**Format Check:** {results['format']['message']}")
+
+            # Display DNS (MX Record) check result
+            if results["dns"]["status"] == "Success":
+                st.success(f"**DNS Check:** {results['dns']['message']}")
+            elif results["dns"]["status"] == "Timeout":
+                st.warning("**DNS Check:** Lookup timed out. Please try again.")
+            else:
+                st.error(f"**DNS Check:** {results['dns']['message']}")
+
+            # Display SMTP check result
+            if results["smtp"]["status"] == "Success":
+                st.success(f"**SMTP Check:** {results['smtp']['message']}")
+            elif results["smtp"]["status"] == "Timeout":
+                st.warning("**SMTP Check:** Connection timed out. Please retry.")
+            else:
+                st.error(f"**SMTP Check:** {results['smtp']['message']}")
+
         else:
             st.warning("Please enter an email address")
 
