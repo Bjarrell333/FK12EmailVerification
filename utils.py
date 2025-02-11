@@ -20,19 +20,22 @@ def check_mx_record(domain):
         dns.resolver.lifetime = 10
 
         mx_records = dns.resolver.resolve(domain, 'MX')
-        return mx_records
+        return {"status": "Success", "message": "MX records found", "mx_records": mx_records}
+    except dns.resolver.Timeout:
+        logging.error(f"DNS Timeout: MX lookup for {domain} took too long.")
+        return {"status": "Timeout", "message": "MX lookup timed out"}
     except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         logging.error(f"DNS Error: No MX records found for {domain}")
-        return None
+        return {"status": "Failed", "message": "No MX records found"}
     except Exception as e:
         logging.error(f"DNS Check Failed: {e}")
-        return None
+        return {"status": "Error", "message": f"DNS error: {e}"}
 
 def check_smtp(email, mx_records):
     """Performs SMTP validation (Runs in Parallel)."""
     try:
         if not mx_records:
-            return False, "No valid mail servers found"
+            return {"status": "Failed", "message": "No valid mail servers found"}
 
         mx_record = sorted(mx_records, key=lambda x: x.preference)[0]
         mx_domain = str(mx_record.exchange).rstrip('.')
@@ -53,43 +56,54 @@ def check_smtp(email, mx_records):
             smtp_debug=False
         )
 
-        return is_valid, "Email is valid" if is_valid else "Email does not exist"
+        return {"status": "Success" if is_valid else "Failed",
+                "message": "Email is valid" if is_valid else "Email does not exist"}
 
     except smtplib.SMTPException as e:
         logging.error(f"SMTP Check Failed: {e}")
-        return False, f"SMTP error: {e}"
+        return {"status": "Error", "message": f"SMTP error: {e}"}
     except Exception as e:
         logging.error(f"Unexpected SMTP Error: {e}")
-        return False, f"Validation error: {e}"
+        return {"status": "Error", "message": f"Validation error: {e}"}
 
-def validate_email_address(email: str) -> tuple[bool, str]:
-    """Parallelized email validation with DNS caching & lower timeouts."""
+def validate_email_address(email: str) -> dict:
+    """Parallelized email validation with DNS caching & timeout handling."""
     try:
         logging.info(f"Validating email: {email}")
 
+        results = {
+            "email": email,
+            "format": {"status": "Success", "message": "Valid email format"},
+            "dns": {"status": "Pending", "message": "Checking MX records..."},
+            "smtp": {"status": "Pending", "message": "Verifying SMTP connection..."},
+        }
+
         # Basic format check
         if not email or '@' not in email:
-            return False, "Invalid email format"
+            results["format"] = {"status": "Failed", "message": "Invalid email format"}
+            return results
 
         _, domain = email.split('@')
 
         # Check domain length
         if len(domain) > 255:
-            return False, "Domain name is too long"
+            results["format"] = {"status": "Failed", "message": "Domain name is too long"}
+            return results
 
         # Run MX lookup & SMTP check in parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_mx = executor.submit(check_mx_record, domain)
-            mx_records = future_mx.result()
+            mx_result = future_mx.result()
+            results["dns"] = mx_result
 
-            if not mx_records:
-                return False, "Domain has no valid mail servers"
+            if mx_result["status"] == "Success":
+                mx_records = mx_result["mx_records"]
+                future_smtp = executor.submit(check_smtp, email, mx_records)
+                smtp_result = future_smtp.result()
+                results["smtp"] = smtp_result
 
-            future_smtp = executor.submit(check_smtp, email, mx_records)
-            is_valid, message = future_smtp.result()
-
-        return is_valid, message
+        return results
 
     except Exception as e:
         logging.error(f"Validation error: {e}")
-        return False, f"Validation error: {e}"
+        return {"status": "Error", "message": f"Validation error: {e}"}
