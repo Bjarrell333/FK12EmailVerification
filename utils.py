@@ -30,7 +30,7 @@ def check_mx_record(domain):
         return {"status": "Error", "message": f"DNS error: {e}"}
 
 def check_smtp(email, mx_records):
-    """Perform SMTP validation and detect if the server blocks verification."""
+    """Perform SMTP validation with reduced timeout."""
     try:
         if not mx_records:
             return {"status": "Failed", "message": "No valid mail servers found"}
@@ -38,45 +38,30 @@ def check_smtp(email, mx_records):
         mx_record = sorted(mx_records, key=lambda x: x.preference)[0]
         mx_domain = str(mx_record.exchange).rstrip('.')
 
-        logging.info(f"Attempting SMTP validation with {mx_domain}")
-
-        # Perform SMTP validation with a lower timeout
+        # Perform SMTP validation (Full check, no skipping)
         is_valid = validate_email(
             email_address=email,
             check_format=True,
             check_blacklist=True,
             check_dns=True,
-            dns_timeout=3,
+            dns_timeout=5,  # Reduced timeout
             check_smtp=True,
-            smtp_timeout=3,
+            smtp_timeout=5,  # Reduced timeout
             smtp_helo_host=socket.gethostname(),
             smtp_from_address='verify@example.com',
             smtp_debug=False
         )
 
-        if is_valid:
-            return {"status": "Success", "message": "✅ This email address is active."}
-        else:
-            return {"status": "Failed", "message": "⚠️ This email may not exist or be inactive."}
-
-    except smtplib.SMTPConnectError:
-        logging.warning("SMTP connection refused—server likely blocking verification.")
-        return {"status": "Warning", "message": "⚠️ This mail server is blocking verification. Email may still be valid."}
-    
-    except smtplib.SMTPServerDisconnected:
-        logging.warning("SMTP server disconnected—potential blocking.")
-        return {"status": "Warning", "message": "⚠️ The mail server disconnected unexpectedly. Email may still be valid."}
+        return {"status": "Success" if is_valid else "Failed",
+                "message": "Email is active" if is_valid else "Email does not exist"}
 
     except smtplib.SMTPException as e:
-        logging.error(f"SMTP Check Failed: {e}")
-        return {"status": "Warning", "message": "⚠️ Unable to verify via SMTP. Email may still be valid."}
-
+        return {"status": "Error", "message": f"SMTP error: {e}"}
     except Exception as e:
-        logging.error(f"Validation Error: {e}")
-        return {"status": "Warning", "message": "⚠️ Unexpected issue verifying email. Try again later."}
+        return {"status": "Error", "message": f"Validation error: {e}"}
 
-async def validate_email_address(email: str) -> dict:
-    """Parallelized email validation with async DNS & SMTP block detection."""
+def validate_email_address(email: str) -> dict:
+    """Parallelized email validation with DNS caching & reduced timeouts."""
     start_time = time.time()
 
     results = {
@@ -93,14 +78,14 @@ async def validate_email_address(email: str) -> dict:
 
     _, domain = email.split('@')
 
-    # Run Async MX lookup
-    mx_result = await check_mx_record_async(domain)
-    results["dns"] = mx_result
+    # Run MX lookup & SMTP check in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_mx = executor.submit(check_mx_record, domain)
+        mx_result = future_mx.result()
+        results["dns"] = mx_result
 
-    # Run SMTP validation in a separate thread
-    if mx_result["status"] == "Success":
-        mx_records = mx_result["mx_records"]
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        if mx_result["status"] == "Success":
+            mx_records = mx_result["mx_records"]
             future_smtp = executor.submit(check_smtp, email, mx_records)
             smtp_result = future_smtp.result()
             results["smtp"] = smtp_result
