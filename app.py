@@ -1,5 +1,4 @@
 import streamlit as st
-import asyncio  # Import asyncio to run async functions
 from utils import validate_email_address
 import streamlit.components.v1 as components
 import os
@@ -54,41 +53,36 @@ def main():
         if email:
             start_time = time.time()  # Start time tracking
 
-            # **FIX: Run async function synchronously**
-            results = asyncio.run(validate_email_address(email))
+            results = validate_email_address(email)
 
             end_time = time.time()  # End time tracking
             elapsed_time = round(end_time - start_time, 2)  # Calculate execution time
 
             st.subheader("Validation Results:")
 
-            # **1️⃣ Format Check**
-            if results["format"]["status"] == "Success":
-                st.success("✅ The email address is correctly formatted.")
-            else:
-                st.error("❌ The email address format is incorrect. Please check for typos.")
-                st.stop()  # **Exit early—no need to check MX or SMTP.**
-
-            # **2️⃣ DNS Check (MX Records)**
-            if results["dns"]["status"] == "Success":
-                st.success("✅ This domain can receive emails.")
-            elif results["dns"]["status"] == "Timeout":
-                st.warning("⏳ We couldn't verify the domain at this time. Please try again later.")
-            else:
-                st.error("⚠️ The domain may not be able to receive emails.")
-                st.stop()  # **Exit early—no need to check SMTP.**
-
-            # **3️⃣ SMTP Check (Mailbox Exists)**
+            # SMTP Check (If email is active)
             if results["smtp"]["status"] == "Success":
-                st.success(f"✅ {results['smtp']['message']}")
-            elif results["smtp"]["status"] == "Warning":
-                st.warning(f"⚠️ {results['smtp']['message']}")
+                st.success("✅ This email address is active. You can send emails to this address.")
+
+                # Only show Format & DNS check if email is active
+                if results["format"]["status"] == "Success":
+                    st.success("✅ The email address is correctly formatted.")
+
+                if results["dns"]["status"] == "Success":
+                    st.success("✅ This domain can receive emails.")
+                elif results["dns"]["status"] == "Timeout":
+                    st.warning("⏳ We couldn't verify the domain at this time. Please try again later.")
+                else:
+                    st.warning("⚠️ The domain may not be able to receive emails.")
+
             elif results["smtp"]["status"] == "Timeout":
                 st.warning("⏳ We couldn't verify if the email is active. Please try again later.")
-            else:
-                st.error(f"⚠️ {results['smtp']['message']}")
 
-            # **4️⃣ Display time taken for validation**
+            else:
+                # If email is NOT active, only show this message
+                st.error("⚠️ This email address is not active. Your email may bounce back.")
+
+            # Display time taken for validation
             st.markdown(f"⏱ **Time Taken:** {elapsed_time} seconds")
 
         else:
