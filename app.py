@@ -60,29 +60,33 @@ def main():
 
             st.subheader("Validation Results:")
 
-            # SMTP Check (If email is active)
+            # **1️⃣ Format Check**
+            if results["format"]["status"] == "Success":
+                st.success("✅ The email address is correctly formatted.")
+            else:
+                st.error("❌ The email address format is incorrect. Please check for typos.")
+                st.stop()  # **Exit early—no need to check MX or SMTP.**
+
+            # **2️⃣ DNS Check (MX Records)**
+            if results["dns"]["status"] == "Success":
+                st.success("✅ This domain can receive emails.")
+            elif results["dns"]["status"] == "Timeout":
+                st.warning("⏳ We couldn't verify the domain at this time. Please try again later.")
+            else:
+                st.error("⚠️ The domain may not be able to receive emails.")
+                st.stop()  # **Exit early—no need to check SMTP.**
+
+            # **3️⃣ SMTP Check (Mailbox Exists)**
             if results["smtp"]["status"] == "Success":
-                st.success("✅ This email address is active. You can send emails to this address.")
-
-                # Only show Format & DNS check if email is active
-                if results["format"]["status"] == "Success":
-                    st.success("✅ The email address is correctly formatted.")
-
-                if results["dns"]["status"] == "Success":
-                    st.success("✅ This domain can receive emails.")
-                elif results["dns"]["status"] == "Timeout":
-                    st.warning("⏳ We couldn't verify the domain at this time. Please try again later.")
-                else:
-                    st.warning("⚠️ The domain may not be able to receive emails.")
-
+                st.success(f"✅ {results['smtp']['message']}")
+            elif results["smtp"]["status"] == "Warning":
+                st.warning(f"⚠️ {results['smtp']['message']}")
             elif results["smtp"]["status"] == "Timeout":
                 st.warning("⏳ We couldn't verify if the email is active. Please try again later.")
-
             else:
-                # If email is NOT active, only show this message
-                st.error("⚠️ This email address is not active. Your email may bounce back.")
+                st.error(f"⚠️ {results['smtp']['message']}")
 
-            # Display time taken for validation
+            # **4️⃣ Display time taken for validation**
             st.markdown(f"⏱ **Time Taken:** {elapsed_time} seconds")
 
         else:
