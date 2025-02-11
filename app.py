@@ -1,4 +1,5 @@
 import streamlit as st
+import asyncio  # Import asyncio to run async functions
 from utils import validate_email_address
 import streamlit.components.v1 as components
 import os
@@ -53,7 +54,8 @@ def main():
         if email:
             start_time = time.time()  # Start time tracking
 
-            results = validate_email_address(email)
+            # **FIX: Run async function synchronously**
+            results = asyncio.run(validate_email_address(email))
 
             end_time = time.time()  # End time tracking
             elapsed_time = round(end_time - start_time, 2)  # Calculate execution time
